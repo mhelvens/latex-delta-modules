@@ -1,0 +1,497 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% \iffalse %%%%
+%                                                                              %
+%  Copyright (c) 2014 - Michiel Helvensteijn - www.mhelvens.net                %
+%                                                                              %
+%  https://github.com/mhelvens/latex-delta-modules                             %
+%                                                                              %
+%  This work may be distributed and/or modified under the conditions           %
+%  of the LaTeX Project Public License, either version 1.3 of this             %
+%  license or (at your option) any later version. The latest version           %
+%  of this license is in     http://www.latex-project.org/lppl.txt             %
+%  and version 1.3 or later is part of all distributions of LaTeX              %
+%  version 2005/12/01 or later.                                                %
+%                                                                              %
+%  This work has the LPPL maintenance status `author-maintained'.              %
+%                                                                              %
+%  The Current Maintainer of this work is Michiel Helvensteijn.                %
+%                                                                              %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% \fi %%%%
+
+% \CheckSum{0}
+%
+% \CharacterTable
+%  {Upper-case    \A\B\C\D\E\F\G\H\I\J\K\L\M\N\O\P\Q\R\S\T\U\V\W\X\Y\Z
+%   Lower-case    \a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\u\v\w\x\y\z
+%   Digits        \0\1\2\3\4\5\6\7\8\9
+%   Exclamation   \!     Double quote  \"     Hash (number) \#
+%   Dollar        \$     Percent       \%     Ampersand     \&
+%   Acute accent  \'     Left paren    \(     Right paren   \)
+%   Asterisk      \*     Plus          \+     Comma         \,
+%   Minus         \-     Point         \.     Solidus       \/
+%   Colon         \:     Semicolon     \;     Less than     \<
+%   Equals        \=     Greater than  \>     Question mark \?
+%   Commercial at \@     Left bracket  \[     Backslash     \\
+%   Right bracket \]     Circumflex    \^     Underscore    \_
+%   Grave accent  \`     Left brace    \{     Vertical bar  \|
+%   Right brace   \}     Tilde         \~}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \subsection{Package Info}                                                    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%    \begin{macrocode}
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage{expl3}
+\ProvidesExplPackage{delta-modules}{2014/04/13}{0.2.0}
+  {feature-based programming in LaTeX code using delta modeling techniques}
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \subsection{Required Packages}                                               %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  These are the packages we'll need:
+%
+%    \begin{macrocode}
+\RequirePackage{l3clist}
+\RequirePackage{lt3graph}
+\RequirePackage{xparse}
+\RequirePackage{environ}
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \subsection{Enhancements of \LaTeX3 Fundamentals}                            %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%
+%
+%    \begin{macrocode}
+\NewDocumentCommand \NewDocumentEnvironmentOrCommand {m m+m+m m+m} {
+	% #1: name
+	% #2:             - parameters
+	% #3: environment - begin
+	% #4: environment - end
+	% #5: command     - additional command-only parameters
+	% #6: command     - definition
+	\NewDocumentEnvironment {#1} {} {
+		\bool_if:NTF \l__delta_environment_seen_bool
+			{ \bool_set_false:N \l__delta_environment_seen_bool	
+			  \use:c {#1_env_begin} }
+			{ \use:c {#1_command} }
+	}{ \use:c {#1_env_end} }
+	
+	\cs_set:cpn {@begin@#1@hook}
+		{ \bool_set_true:N \l__delta_environment_seen_bool }
+	
+	\exp_after:wN \NewDocumentCommand
+		\cs:w #1_env_begin \cs_end:
+		{#2}
+		{#3}
+	
+	\exp_after:wN \NewDocumentCommand
+		\cs:w #1_env_end \cs_end:
+		{}
+		{#4}
+	
+	\exp_after:wN \NewDocumentCommand
+		\cs:w #1_command \cs_end:
+		{#2#5}
+		{#6}
+}
+\bool_new:N \l__delta_environment_seen_bool
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \subsection{Main Commands}                                                   %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Keeping Track of Stuff
+%
+%    \begin{macrocode}
+\prop_new:N  \g__delta_application_conditions_prop
+\prop_new:N  \g__delta_features_prop
+\graph_new:N \g__delta_model_graph
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Features
+%
+%    \begin{macrocode}
+\cs_new:Nn \delta_feature_new:N {
+	%%% Record feature
+	\prop_gput:Nnn
+		\g__delta_features_prop
+		{#1}
+		{#1}
+	
+	%%% expl3 bool
+	\bool_new:N #1
+	
+	%%% LaTeX if
+	\exp_after:wN \newif \cs:w if\str_tail:n{#1} \cs_end:
+	
+	%%% etoolbox toggle
+	\cs_if_exist:NT \newtoggle {
+		\exp_args:Nx \newtoggle {\str_tail:n{#1}}
+	}
+}
+
+\prg_new_conditional:Nnn \delta_if_feature_selected:n {T,F,TF,p} {
+	\bool_if:nTF {#1}
+		{ \prg_return_true: }
+		{ \prg_return_false: }
+}
+
+\cs_new:Nn \__delta_set_feature_true:N {
+	%%% expl3 bool
+	\bool_gset_true:N #1
+	
+	%%% LaTeX if
+	\use:c {\str_tail:n{#1}true}
+	
+	%%% etoolbox toggle
+	\cs_if_exist:NT \toggletrue
+		{ \exp_args:Nx \toggletrue {\str_tail:n{#1}} }
+}
+
+\cs_new:Nn \__delta_set_feature_false:N {
+	%%% expl3 bool
+	\bool_gset_false:N #1
+	
+	%%% LaTeX if
+	\use:c {\str_tail:n{#1}false}
+	
+	%%% etoolbox toggle
+	\cs_if_exist:NT \togglefalse
+		{ \exp_args:Nx \togglefalse {\str_tail:n{#1}} }
+}
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Document Level Feature Commands
+%
+%    \begin{macrocode}
+\NewDocumentCommand \DeclareFeature {sm} {
+	\delta_feature_new:N #2
+}
+\DeclareExpandableDocumentCommand \IfFeatureSelectedTF {+m+m+m} {
+	\delta_if_feature_selected:nTF {#1} {#2} {#3}
+}
+\DeclareExpandableDocumentCommand \IfFeatureSelectedT {+m+m} {
+	\delta_if_feature_selected:nT {#1} {#2}
+}
+\DeclareExpandableDocumentCommand \IfFeatureSelectedF {+m+m} {
+	\delta_if_feature_selected:nF {#1} {#2}
+}
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Variation Points
+%
+%    \begin{macrocode}
+\makeatletter
+\cs_new:Nn \delta_varpoint_new:N {
+	\exp_args:Nx \NewDocumentEnvironmentOrCommand {\cs_to_str:N#1}
+		{} {%%%% It's an environment
+			\cs_set_eq:NN \l__delta_current_varpoint_cs #1
+			\Collect@Body \__delta_varpoint_env_captured:n
+		} {}
+		{} {%%% It's a command
+			%\IfValueT {##1} { \tl_set:Nn \l__delta_varpoint_init_tl {##1} } % TODO: add o param back for initial vp value
+			\tl_use:c {__delta_varpoint_pre_(\token_to_str:N#1)_tl}
+			\use:c {__delta_varpoint_(\token_to_str:N#1)_cs} {\l__delta_varpoint_init_tl}
+			\tl_use:c {__delta_varpoint_post_(\token_to_str:N#1)_tl}
+			\tl_clear:N \l__delta_varpoint_init_tl
+		}
+	\tl_new:c   {__delta_varpoint_pre_(\token_to_str:N#1)_tl}
+	\tl_new:c   {__delta_varpoint_post_(\token_to_str:N#1)_tl}
+	\cs_new:cpn {__delta_varpoint_(\token_to_str:N#1)_cs} ##1 {##1}
+}
+\makeatother
+\cs_generate_variant:Nn \str_tail:n {f}
+
+\cs_new:Nn \__delta_varpoint_env_captured:n {
+	%%% Store Initial Value
+	\tl_set:Nn \l__delta_varpoint_init_tl {#1}
+	
+	%%% Call the command
+	\l__delta_current_varpoint_cs
+}
+\tl_new:N \l__delta_varpoint_init_tl
+
+\cs_new:Nn \delta_replace_varpoint:Nn {
+	\cs_gset:cpn {__delta_varpoint_(\token_to_str:N#1)_cs} ##1 {#2}
+	\tl_gclear:c {__delta_varpoint_pre_(\token_to_str:N#1)_tl}
+	\tl_gclear:c {__delta_varpoint_post_(\token_to_str:N#1)_tl}
+}
+
+\cs_new:Nn \delta_prepend_to_varpoint:Nn {
+	\tl_gput_left:cn {__delta_varpoint_pre_(\token_to_str:N#1)_tl} {#2}
+}
+
+\cs_new:Nn \delta_append_to_varpoint:Nn {
+	\tl_gput_right:cn {__delta_varpoint_post_(\token_to_str:N#1)_tl} {#2}
+}
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Document Level Variation Point Commands
+%
+%    \begin{macrocode}
+\NewDocumentCommand \DeclareVariationPoint {m}
+	{ \delta_varpoint_new:N #1 }
+\NewDocumentCommand \ReplaceVariationPoint {m +m}
+	{ \delta_replace_varpoint:Nn #1 {#2} }
+\NewDocumentCommand \PrependToVariationPoint {m +m}
+	{ \delta_prepend_to_varpoint:Nn #1 {#2} }
+\NewDocumentCommand \AppendToVariationPoint {m +m}
+	{ \delta_append_to_varpoint:Nn #1 {#2} }
+\cs_set_eq:NN \DeclareVP   \DeclareVariationPoint
+\cs_set_eq:NN \ReplaceVP   \ReplaceVariationPoint
+\cs_set_eq:NN \PrependToVP \PrependToVariationPoint
+\cs_set_eq:NN \AppendToVP  \AppendToVariationPoint
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Partial-Order Variation Points
+%
+%    \begin{macrocode}
+\cs_new:Nn \delta_po_varpoint_new:N {
+	%%% storing the POVP in a graph
+	\graph_new:c {g__delta_po_varpoint_(\token_to_str:N#1)_graph}
+	
+	%%% producing the output of the POVP
+	\NewDocumentCommand {#1} {} {
+		\cs_set_eq:Nc \l_vp_graph {g__delta_po_varpoint_(\token_to_str:N#1)_graph}
+		\graph_map_topological_order_inline:cn
+			{g__delta_po_varpoint_(\token_to_str:N#1)_graph}
+			{%\typeout{----------\token_to_str:N#1}
+			 ####2}
+	}
+}
+\cs_generate_variant:Nn \graph_new:N {c}
+\cs_generate_variant:Nn \graph_map_topological_order_inline:Nn {c}
+
+\cs_new:Nn \delta_map_po_varpoint_inline:Nn {
+	\graph_map_topological_order_inline:cn
+		{g__delta_po_varpoint_(\token_to_str:N#1)_graph}
+		{#2}
+}
+
+\cs_new:Nn \delta_count_po_varpoint:N {
+	\graph_vertex_count:c
+		{g__delta_po_varpoint_(\token_to_str:N#1)_graph}
+}
+\cs_generate_variant:Nn \graph_vertex_count:N {c}
+
+\cs_new:Nn \delta_insert_into_po_varpoint:Nnn {
+	\graph_gput_vertex:cnn
+		{g__delta_po_varpoint_(\token_to_str:N#1)_graph}
+		{#2}
+		{#3}
+}
+\cs_generate_variant:Nn \graph_gput_vertex:Nnn {c}
+
+\cs_new:Nn \delta_order_po_varpoint:Nnn {
+	\graph_if_vertex_exist:cnF
+		{g__delta_po_varpoint_(\token_to_str:N#1)_graph}
+		{#2}
+		{ \graph_gput_vertex:cn {g__delta_po_varpoint_(\token_to_str:N#1)_graph} {#2} }
+	\graph_if_vertex_exist:cnF
+		{g__delta_po_varpoint_(\token_to_str:N#1)_graph}
+		{#3}
+		{ \graph_gput_vertex:cn {g__delta_po_varpoint_(\token_to_str:N#1)_graph} {#3} }
+	\graph_gput_edge:cnn
+		{g__delta_po_varpoint_(\token_to_str:N#1)_graph}
+		{#2}
+		{#3}
+}
+\cs_generate_variant:Nn \graph_gput_vertex:Nn {c}
+\cs_generate_variant:Nn \graph_gput_edge:Nnn {c}
+\cs_generate_variant:Nn \graph_if_vertex_exist:NnF {c}
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Document Level PO Variation Point Commands
+%
+%    \begin{macrocode}
+\NewDocumentCommand \DeclarePOVariationPoint {m}
+	{ \delta_po_varpoint_new:N #1 }
+\NewDocumentCommand \InsertIntoPOVariationPoint {mm+m}
+	{ \delta_insert_into_po_varpoint:Nnn #1 {#2} {#3} }
+\NewDocumentCommand \OrderPOVariationPoint {mmm}
+	{ \delta_order_po_varpoint:Nnn #1 {#2} {#3} }
+\NewDocumentCommand \MapPOVariationPoint {mm}
+	{ \delta_map_po_varpoint_inline:Nn #1 {#2} }
+\NewDocumentCommand \CountPOVariationPoint {m}
+	{ \delta_count_po_varpoint:N #1 }
+\cs_set_eq:NN \DeclarePOVP    \DeclarePOVariationPoint
+\cs_set_eq:NN \InsertIntoPOVP \InsertIntoPOVariationPoint
+\cs_set_eq:NN \OrderPOVP      \OrderPOVariationPoint
+\cs_set_eq:NN \MapPOVP        \MapPOVariationPoint
+\cs_set_eq:NN \CountPO        \CountPOVariationPoint
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Deltas
+%
+%    \begin{macrocode}
+\cs_new:Nn \delta_new:Nnnn {
+
+						%\hrule\tl_to_str:n{#4}\hrule
+
+	%%% Register delta name and effect
+	\__delta_register:Nn #1 {#4}
+	
+	%%% Store Application Condition
+	\prop_gput:Nnn
+		\g__delta_application_conditions_prop
+		{#1}
+		{#2}
+	
+	%%% Record local application order
+	\clist_map_inline:nn {#3} {
+		\graph_if_vertex_exist:NnF
+			\g__delta_model_graph
+			{##1}
+			{ \__delta_register:Nn ##1 {} }
+		\graph_gput_edge:Nnn
+			\g__delta_model_graph
+			{##1}
+			{#1}
+	}
+}
+\cs_new:Nn \__delta_register:Nn {
+	\tl_gset_eq:NN #1 \q_delta
+	\graph_gput_vertex:Nnn
+		\g__delta_model_graph
+		{#1}
+		{#2}
+}
+\quark_new:N \q_delta
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Document Level Delta Commands
+%
+%    \begin{macrocode}
+\makeatletter
+\NewDocumentEnvironment {DeltaModule} {mmm}
+	{ \Collect@Body \__delta_delta_env_captured:n   }
+	{ \delta_new:NnnV #1 {#2} {#3} \l__delta_ops_tl }
+\makeatother
+\cs_new:Nn \__delta_delta_env_captured:n
+	{ \tl_set:Nn \l__delta_ops_tl {#1} }
+\cs_generate_variant:Nn \delta_new:Nnnn {NnnV}
+\tl_new:N \l__delta_ops_tl
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Delta Model Application
+%
+%    \begin{macrocode}
+\cs_new:Nn \delta_select_features:n {
+	\group_begin:
+	
+	%%% Process the given feature selection
+	\prop_map_inline:Nn \g__delta_features_prop { \__delta_set_feature_false:N ##2 }
+	\clist_map_inline:nn {#1}                   { \__delta_set_feature_true:N  ##1 }
+	
+	%%% For all deltas in topological order.
+	\graph_map_topological_order_inline:Nn \g__delta_model_graph {
+	
+		%%% Take its application condition.
+		\prop_get:NnNT \g__delta_application_conditions_prop {##1} \l__delta_appcond_tl {
+		
+			%%% If it is satisfied by the current feature selection...
+			\bool_if:VT \l__delta_appcond_tl {
+				##2
+			}
+		}
+	}
+	
+	\group_end:
+}
+\cs_generate_variant:Nn \bool_if:nT {V}
+\tl_new:N \l__delta_appcond_tl
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Document Level Delta Model Application Commands
+%
+%    \begin{macrocode}
+\NewDocumentCommand \SelectFeatures {m}
+	{ \delta_select_features:n {#1} }
+%    \end{macrocode}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -87,3 +87,5 @@ sympy-plots-for-*.tex/
 
 # xindy
 *.xdy
+/delta-modules-0.2.0.pdf
+/delta-modules-0.2.0.tar.gz
